@@ -1,0 +1,13 @@
+modLoader="javafml"
+loaderVersion="[38,)" # для Forge 1.18.x
+license="MIT"
+
+[[mods]]
+modId="hellomod"
+version="1.0.0"
+displayName="Hello Mod"
+credits="Мій перший мод"
+authors="Misha"
+description='''
+Простий мод, який при вході у світ пише повідомлення в чат.
+'''
