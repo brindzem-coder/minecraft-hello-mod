@@ -15,14 +15,22 @@ public class WorldScanner {
     /**
      * Знімає "знімок" світу навколо гравця в текстовому форматі.
      *
-     * Формат рядків:
-     * CELL dx dy dz KIND BLOCK_NAME
+     * Формат кожного рядка:
+     *
+     * cell dx=<int> dy=<int> dz=<int> kind=<KIND> block=<BLOCK_NAME>
      *
      * де:
-     *  - dx, dz – зсув від гравця по X/Z
-     *  - dy – відносна висота (surfaceY - playerY)
-     *  - KIND – категорія (WATER/SOLID/LEAVES/...)
-     *  - BLOCK_NAME – ім'я блока (спрощене)
+     *  - dx, dz – зсув від гравця по X/Z (у блоках);
+     *  - dy – відносна висота (surfaceY - playerY);
+     *  - KIND – груба категорія блоку (WATER/SOLID/LEAVES/...);
+     *  - BLOCK_NAME – просте ім'я блока (stone, grass_block, oak_log, ...).
+     *
+     * Рядки йдуть у порядку z від -radius до +radius,
+     * а всередині кожного z — x від -radius до +radius.
+     *
+     * ВАЖЛИВО:
+     *  - заголовок типу "# WORLD_SCAN ..." тут більше не додається,
+     *    щоб AiRequestBuilder сам керував секціями.
      */
     public static String scanAround(ServerLevel level, ServerPlayer player,
                                     int radius, int up, int down) {
@@ -32,17 +40,13 @@ public class WorldScanner {
 
         StringBuilder sb = new StringBuilder();
 
-        sb.append("# WORLD_SCAN radius=").append(radius)
-                .append(" up=").append(up)
-                .append(" down=").append(down)
-                .append(" originY=").append(originY).append("\n");
-
         for (int dz = -radius; dz <= radius; dz++) {
             for (int dx = -radius; dx <= radius; dx++) {
 
                 BlockPos surface = findSurface(level, origin, dx, dz, up, down);
                 if (surface == null) {
-                    continue; // в цій колонці нічого цікавого не знайшли
+                    // Якщо в колонці взагалі нічого немає (лише повітря) – пропускаємо.
+                    continue;
                 }
 
                 BlockState state = level.getBlockState(surface);
@@ -52,12 +56,14 @@ public class WorldScanner {
 
                 int dy = surface.getY() - originY;
 
-                sb.append("CELL ")
-                        .append(dx).append(" ")
-                        .append(dy).append(" ")
-                        .append(dz).append(" ")
-                        .append(kind).append(" ")
-                        .append(name).append("\n");
+                // Формат, який легко читати ШІ: key=value, стабільний порядок полів.
+                sb.append("cell ")
+                        .append("dx=").append(dx).append(" ")
+                        .append("dy=").append(dy).append(" ")
+                        .append("dz=").append(dz).append(" ")
+                        .append("kind=").append(kind).append(" ")
+                        .append("block=").append(name)
+                        .append("\n");
             }
         }
 
@@ -124,13 +130,13 @@ public class WorldScanner {
 
     /**
      * Спрощене ім'я блоку (без namespace, у нижньому регістрі).
+     * Наприклад, "minecraft:stone" -> "stone".
      */
     private static String blockName(Block block) {
         String raw = block.getRegistryName() != null
                 ? block.getRegistryName().toString()
                 : "unknown";
 
-        // наприклад "minecraft:stone" -> "stone"
         int idx = raw.indexOf(':');
         if (idx >= 0 && idx < raw.length() - 1) {
             raw = raw.substring(idx + 1);
@@ -140,14 +146,24 @@ public class WorldScanner {
 
     /**
      * Допоміжна команда: відсканувати й написати в лог + коротке повідомлення гравцю.
+     *
+     * Тут ми додаємо свій заголовок, щоб у консолі було видно параметри скану.
      */
     public static void scanAndReport(ServerLevel level, ServerPlayer player) {
-        String snapshot = scanAround(level, player, 8, 6, 4); // радіус 8, вгору 6, вниз 4
+        int radius = 8;
+        int up = 6;
+        int down = 4;
 
-        // Лог у консоль сервера / IDE
+        String snapshot = scanAround(level, player, radius, up, down);
+
+        // Лог у консоль сервера / IDE — з коротким заголовком.
+        System.out.println("# WORLD_SCAN radius=" + radius
+                + " up=" + up
+                + " down=" + down
+                + " originY=" + player.blockPosition().getY());
         System.out.println(snapshot);
 
-        int lines = snapshot.split("\\r?\\n").length;
+        int lines = snapshot.isEmpty() ? 0 : snapshot.split("\\r?\\n").length;
         player.sendMessage(
                 new TextComponent("WORLD SCAN готово. Рядків: " + lines + " (дивись консоль сервера)."),
                 player.getUUID()

@@ -43,6 +43,43 @@ public class ScriptRunner {
     }
 
     /**
+     * Зручний варіант для dev-скриптів у коді:
+     * приймає один Java-рядок, де команди розділені ';' або переведенням рядка.
+     *
+     * Приклад:
+     *   "CLEAR_AROUND 6; PLACE_BLOCK stone 0 -1 0; BUILD_BOX 3 3 3;";
+     */
+    public static void runFromSemicolonSeparated(ServerLevel level, ServerPlayer player, String scriptText) {
+        if (scriptText == null || scriptText.isBlank()) {
+            player.sendMessage(
+                    new TextComponent("DEV_SCRIPT порожній, нічого виконувати."),
+                    player.getUUID()
+            );
+            return;
+        }
+
+        String[] rawParts = scriptText.split("[;\\r\\n]");
+        List<String> lines = new ArrayList<>();
+
+        for (String part : rawParts) {
+            String line = part.trim();
+            if (!line.isEmpty()) {
+                lines.add(line);
+            }
+        }
+
+        if (lines.isEmpty()) {
+            player.sendMessage(
+                    new TextComponent("DEV_SCRIPT не містить жодної валідної команди."),
+                    player.getUUID()
+            );
+            return;
+        }
+
+        run(level, player, lines);
+    }
+
+    /**
      * Головний метод запуску скрипта з уже готового списку рядків.
      */
     public static void run(ServerLevel level, ServerPlayer player, List<String> lines) {
@@ -121,11 +158,11 @@ public class ScriptRunner {
             return;
         }
 
-        String blockName = parts[1].toLowerCase(Locale.ROOT);
-        Block block = parseBlock(blockName);
+        String blockToken = parts[1]; // залишаємо як є, parseBlock сам нормалізує
+        Block block = parseBlock(blockToken);
         if (block == null) {
             player.sendMessage(
-                    new TextComponent("Невідомий блок '" + blockName + "' у рядку: " + line),
+                    new TextComponent("Невідомий блок '" + blockToken + "' у рядку: " + line),
                     player.getUUID()
             );
             return;
@@ -202,10 +239,25 @@ public class ScriptRunner {
     // ─────────────────────────────────────
 
     /**
-     * Перетворює текстове ім'я блоку (stone, oak_planks, ...) на Block.
+     * Перетворює текстове ім'я блоку на Block.
+     *
+     * Підтримувані варіанти:
+     *  - "stone"
+     *  - "minecraft:stone"
+     *  - "oak_fence"
+     *  - "minecraft:oak_fence"
+     *  - та інші з цього списку.
      */
     private static Block parseBlock(String name) {
-        return switch (name) {
+        String id = name.toLowerCase(Locale.ROOT);
+
+        // Відрізаємо namespace, якщо є (minecraft: або будь-який інший)
+        int idx = id.indexOf(':');
+        if (idx >= 0 && idx < id.length() - 1) {
+            id = id.substring(idx + 1);
+        }
+
+        return switch (id) {
             case "stone" -> Blocks.STONE;
             case "stone_bricks", "stonebrick", "stone_brick" -> Blocks.STONE_BRICKS;
             case "oak_planks", "planks_oak", "oakplanks" -> Blocks.OAK_PLANKS;

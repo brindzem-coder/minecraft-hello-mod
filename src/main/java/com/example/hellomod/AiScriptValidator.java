@@ -33,7 +33,7 @@ public class AiScriptValidator {
             String line = raw.trim();
             if (line.isEmpty()) continue;
             if (line.startsWith("#") || line.startsWith("//")) continue;
-            if (line.endsWith(";")) line = line.substring(0, line.length()-1).trim();
+            if (line.endsWith(";")) line = line.substring(0, line.length() - 1).trim();
             if (line.isEmpty()) continue;
 
             String[] parts = line.split("\\s+");
@@ -75,9 +75,14 @@ public class AiScriptValidator {
             return;
         }
 
-        String block = parts[1].toLowerCase();
-        if (!AiPolicy.ALLOWED_BLOCKS.contains(block)) {
-            r.errors.add("PLACE_BLOCK заборонений блок '" + block + "'. Дозволені: " + AiPolicy.ALLOWED_BLOCKS);
+        String rawBlockToken = parts[1].toLowerCase();
+        String normalizedBlock = normalizeBlockToken(rawBlockToken);
+
+        if (!AiPolicy.ALLOWED_BLOCKS.contains(normalizedBlock)) {
+            r.errors.add(
+                    "PLACE_BLOCK заборонений блок '" + rawBlockToken +
+                            "' (нормалізовано як '" + normalizedBlock + "'). Дозволені: " + AiPolicy.ALLOWED_BLOCKS
+            );
             return;
         }
 
@@ -138,9 +143,31 @@ public class AiScriptValidator {
 
         r.buildBoxCount++;
 
-        if (w < 1 || h < 1 || d < 1 || w > AiPolicy.MAX_BOX_SIZE || h > AiPolicy.MAX_BOX_SIZE || d > AiPolicy.MAX_BOX_SIZE) {
-            r.errors.add("BUILD_BOX: розміри " + w + " " + h + " " + d + " (дозволено 1–" + AiPolicy.MAX_BOX_SIZE + ")");
+        if (w < 1 || h < 1 || d < 1
+                || w > AiPolicy.MAX_BOX_SIZE
+                || h > AiPolicy.MAX_BOX_SIZE
+                || d > AiPolicy.MAX_BOX_SIZE) {
+
+            r.errors.add("BUILD_BOX: розміри " + w + " " + h + " " + d +
+                    " (дозволено 1–" + AiPolicy.MAX_BOX_SIZE + ")");
         }
+    }
+
+    /**
+     * Нормалізує токен блока з/без namespace для перевірки політики.
+     *
+     * Приклади:
+     *   "stone" -> "stone"
+     *   "minecraft:oak_fence" -> "oak_fence"
+     *   "my_datapack:custom_block" -> "custom_block"
+     */
+    private static String normalizeBlockToken(String token) {
+        String name = token.toLowerCase();
+        int idx = name.indexOf(':');
+        if (idx >= 0 && idx < name.length() - 1) {
+            name = name.substring(idx + 1);  // відрізаємо "minecraft:" або інший namespace
+        }
+        return name;
     }
 
     public static void sendReportToPlayer(ServerPlayer player, Report r) {

@@ -14,6 +14,7 @@ public class ModCommands {
 
     public static void register(CommandDispatcher<CommandSourceStack> dispatcher) {
 
+        // Головна гілка /ai ...
         dispatcher.register(
                 Commands.literal("ai")
 
@@ -88,6 +89,56 @@ public class ModCommands {
                                     }
 
                                     ScriptRunner.run(level, player, lines);
+                                    return 1;
+                                })
+                        )
+
+                        // /ai exec_dev
+                        // /ai exec_dev
+                        .then(Commands.literal("exec_dev")
+                                .executes(ctx -> {
+                                    ServerPlayer player = ctx.getSource().getPlayerOrException();
+                                    ServerLevel level = ctx.getSource().getLevel();
+
+                                    // Читаємо dev-скрипт із run/config/ai_dev_script.txt
+                                    String script = DevScripts.loadDevScript(player);
+                                    if (script == null) {
+                                        // повідомлення вже відправлено всередині DevScripts
+                                        return 1;
+                                    }
+
+                                    // Виконуємо як багаторядковий скрипт
+                                    ScriptRunner.runFromMultiline(level, player, script);
+
+                                    return 1;
+                                })
+                        )
+        );
+
+        // Окрема команда /ai_build "<вільний текст>"
+        dispatcher.register(
+                Commands.literal("ai_build")
+                        .then(Commands.argument("intent", StringArgumentType.greedyString())
+                                .executes(ctx -> {
+                                    ServerPlayer player = ctx.getSource().getPlayerOrException();
+                                    ServerLevel level = ctx.getSource().getLevel();
+
+                                    String intent = StringArgumentType.getString(ctx, "intent");
+
+                                    // Будуємо повний запит для ШІ
+                                    String request = AiRequestBuilder.buildRequest(level, player, intent);
+
+                                    // Виводимо у консоль (IntelliJ), щоб ти міг його скопіювати
+                                    System.out.println(request);
+
+                                    // Коротке повідомлення гравцю
+                                    player.sendMessage(
+                                            new net.minecraft.network.chat.TextComponent(
+                                                    "AI request згенеровано. Відкрий консоль сервера/IDE та скопіюй блок між === AI REQUEST START === і === AI REQUEST END ===."
+                                            ),
+                                            player.getUUID()
+                                    );
+
                                     return 1;
                                 })
                         )
