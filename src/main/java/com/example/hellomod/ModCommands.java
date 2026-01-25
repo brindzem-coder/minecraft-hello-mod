@@ -1,5 +1,6 @@
 package com.example.hellomod;
 
+import com.example.hellomod.ai.local.AiBuildLocalService;
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.StringArgumentType;
 
@@ -14,7 +15,7 @@ public class ModCommands {
 
     public static void register(CommandDispatcher<CommandSourceStack> dispatcher) {
 
-        // Головна гілка /ai ...
+        // Головна гілка /ai .
         dispatcher.register(
                 Commands.literal("ai")
 
@@ -47,6 +48,21 @@ public class ModCommands {
                                             }
 
                                             ScriptRunner.runFromMultiline(level, player, script);
+                                            return 1;
+                                        })
+                                )
+                        )
+
+                        // /ai build_local <thing...>
+                        .then(Commands.literal("build_local")
+                                .then(Commands.argument("thing", StringArgumentType.greedyString())
+                                        .executes(ctx -> {
+                                            ServerPlayer player = ctx.getSource().getPlayerOrException();
+                                            ServerLevel level = ctx.getSource().getLevel();
+
+                                            String thing = StringArgumentType.getString(ctx, "thing");
+                                            AiBuildLocalService.handle(level, player, thing);
+
                                             return 1;
                                         })
                                 )
@@ -93,7 +109,6 @@ public class ModCommands {
                                 })
                         )
 
-                        // /ai exec_dev
                         // /ai exec_dev
                         .then(Commands.literal("exec_dev")
                                 .executes(ctx -> {
