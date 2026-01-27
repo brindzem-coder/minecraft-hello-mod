@@ -70,7 +70,9 @@ public final class LocalLlmClient {
     public LocalLlmClient(Config cfg) {
         this.cfg = Objects.requireNonNull(cfg, "cfg");
         this.http = HttpClient.newBuilder()
+                .version(HttpClient.Version.HTTP_1_1) // LM Studio інколи глючить з HTTP/2 при Java HttpClient
                 .connectTimeout(Duration.ofSeconds(Math.max(5, cfg.timeoutSec)))
+                .followRedirects(HttpClient.Redirect.NEVER)
                 .build();
     }
 
@@ -164,13 +166,10 @@ public final class LocalLlmClient {
         int mt = cfg.maxTokens > 0 ? cfg.maxTokens : 400;
         body.addProperty("max_tokens", mt);
 
-        // TEMP: disable stop for LM Studio if it causes hanging
-        if (cfg.stopMarker != null && !cfg.stopMarker.isBlank() && !"NONE".equalsIgnoreCase(cfg.stopMarker.trim())) {
-            JsonArray stop = new JsonArray();
-            stop.add(cfg.stopMarker.trim());
-            body.add("stop", stop);
-        }
-
+        String stopMarker = (cfg.stopMarker == null || cfg.stopMarker.isBlank()) ? "END_DSL" : cfg.stopMarker.trim();
+        JsonArray stop = new JsonArray();
+        stop.add(stopMarker);
+        body.add("stop", stop);
 
         String url = normalizeBase(cfg.baseUrl) + "/v1/chat/completions";
 
