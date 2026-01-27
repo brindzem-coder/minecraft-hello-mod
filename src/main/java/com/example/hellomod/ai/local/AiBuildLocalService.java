@@ -58,7 +58,14 @@ public final class AiBuildLocalService {
         LLM_EXECUTOR.execute(() -> {
             try {
                 LocalLlmClient client = LocalLlmClient.createDefault();
+
+                LOGGER.info("[ai build_local] LLM cfg: {}", client.describe());
+                LOGGER.info("[ai build_local] Prompt chars={}", prompt.length());
+
                 String rawResponse = client.sendBlocking(prompt);
+
+                LOGGER.info("[ai build_local] Response chars={}", rawResponse == null ? 0 : rawResponse.length());
+
 
                 // 3) Повертаємось в main server thread для чат/пам’ять
                 server.execute(() -> handleResponseOnServerThread(server, playerId, rawResponse));

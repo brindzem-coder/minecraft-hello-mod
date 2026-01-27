@@ -3,6 +3,7 @@ package com.example.hellomod.llm;
 import com.google.gson.Gson;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
+import net.minecraftforge.fml.loading.FMLPaths;
 
 import java.io.IOException;
 import java.net.URI;
@@ -24,7 +25,7 @@ import java.util.concurrent.CompletableFuture;
  * 2) OPENAI_CHAT:     POST {baseUrl}/v1/chat/completions (LM Studio / llama.cpp server / інші OpenAI-compatible)
  *
  * Конфіг:
- * - файл: run/config/local_llm.json
+ * - файл: <game>/config/local_llm.json (у dev це run/config/local_llm.json)
  * - або system properties (мають пріоритет): ai.llm.mode, ai.llm.baseUrl, ai.llm.model, ai.llm.timeoutSec, ai.llm.apiKey
  *
  * Важливо для Forge: мережеві виклики роби НЕ на серверному треді. Для цього є sendAsync(...).
@@ -39,10 +40,10 @@ public final class LocalLlmClient {
     public static final class Config {
         public Mode mode = Mode.OLLAMA_GENERATE;
 
-        /** Напр.: http://localhost:11434 для Ollama, або http://localhost:1234 для LM Studio */
-        public String baseUrl = "http://localhost:11434";
+        /** Напр.: http://127.0.0.1:11434 для Ollama, або http://127.0.0.1:1234 для LM Studio */
+        public String baseUrl = "http://127.0.0.1:11434";
 
-        /** Напр.: "llama3.1" для Ollama, або "local-model" для OpenAI-compatible */
+        /** Напр.: "llama3.1" для Ollama, або "llama-3-8b-gpt-4o-rul.0" для LM Studio */
         public String model = "llama3.1";
 
         /** Таймаут на запит */
@@ -53,6 +54,12 @@ public final class LocalLlmClient {
 
         /** Температура для OPENAI_CHAT (опційно). */
         public double temperature = 0.2;
+
+        /** Обмеження генерації для OPENAI_CHAT (щоб не висіло/не писало вічно) */
+        public int maxTokens = 400;
+
+        /** Stop marker для завершення DSL. */
+        public String stopMarker = "END_DSL";
     }
 
     private static final Gson GSON = new Gson();
@@ -67,11 +74,21 @@ public final class LocalLlmClient {
                 .build();
     }
 
-    /** Дефолтний клієнт з run/config/local_llm.json (або дефолти, якщо файла немає). */
+    /** Дефолтний клієнт з config/local_llm.json (або дефолти, якщо файла немає). */
     public static LocalLlmClient createDefault() {
         Config cfg = loadConfig();
         applySystemOverrides(cfg);
         return new LocalLlmClient(cfg);
+    }
+
+    /** Для логів/діагностики */
+    public String describe() {
+        return "mode=" + cfg.mode
+                + " baseUrl=" + cfg.baseUrl
+                + " model=" + cfg.model
+                + " timeoutSec=" + cfg.timeoutSec
+                + " maxTokens=" + cfg.maxTokens
+                + " stopMarker=" + cfg.stopMarker;
     }
 
     /** Асинхронний запит (рекомендовано викликати з команди). */
@@ -128,7 +145,7 @@ public final class LocalLlmClient {
 
     private HttpRequest buildOpenAiChat(String prompt) {
         // OpenAI-compatible: POST /v1/chat/completions
-        // body: { model, messages:[{role:"user",content:"..."}], temperature }
+        // body: { model, messages:[{role:"user",content:"..."}], temperature, stream:false, max_tokens, stop:[...] }
         JsonObject body = new JsonObject();
         body.addProperty("model", cfg.model);
 
@@ -141,6 +158,20 @@ public final class LocalLlmClient {
         body.add("messages", messages);
         body.addProperty("temperature", cfg.temperature);
 
+        // IMPORTANT: keep it bounded to avoid request hanging until timeout
+        body.addProperty("stream", false);
+
+        int mt = cfg.maxTokens > 0 ? cfg.maxTokens : 400;
+        body.addProperty("max_tokens", mt);
+
+        // TEMP: disable stop for LM Studio if it causes hanging
+        if (cfg.stopMarker != null && !cfg.stopMarker.isBlank() && !"NONE".equalsIgnoreCase(cfg.stopMarker.trim())) {
+            JsonArray stop = new JsonArray();
+            stop.add(cfg.stopMarker.trim());
+            body.add("stop", stop);
+        }
+
+
         String url = normalizeBase(cfg.baseUrl) + "/v1/chat/completions";
 
         HttpRequest.Builder b = HttpRequest.newBuilder(URI.create(url))
@@ -150,6 +181,11 @@ public final class LocalLlmClient {
         if (cfg.apiKey != null && !cfg.apiKey.isBlank()) {
             b.header("Authorization", "Bearer " + cfg.apiKey.trim());
         }
+
+        String json = GSON.toJson(body);
+        System.out.println("[ai build_local] POST " + url);
+        System.out.println("[ai build_local] body chars=" + json.length());
+        System.out.println("[ai build_local] body head=" + (json.length() > 800 ? json.substring(0, 800) : json));
 
         return b.POST(HttpRequest.BodyPublishers.ofString(GSON.toJson(body), StandardCharsets.UTF_8))
                 .build();
@@ -172,7 +208,6 @@ public final class LocalLlmClient {
                 if (obj.has("response")) {
                     return obj.get("response").getAsString();
                 }
-                // fallback
                 throw new LocalLlmException("Ollama response missing 'response' field.");
             }
 
@@ -201,14 +236,25 @@ public final class LocalLlmClient {
 
             throw new LocalLlmException("Unsupported mode: " + cfg.mode);
         } catch (RuntimeException e) {
-            throw new LocalLlmException("Failed to parse LLM response JSON: " + e.getMessage() + " | body=" + trimForLog(raw), e);
+            throw new LocalLlmException(
+                    "Failed to parse LLM response JSON: " + e.getMessage() + " | body=" + trimForLog(raw),
+                    e
+            );
         }
     }
 
     private static Config loadConfig() {
-        // run/config/local_llm.json (відносно робочої директорії run/)
         Config cfg = new Config();
-        Path path = Path.of("config", "local_llm.json"); // якщо запускаєш з run/, це буде run/config/local_llm.json
+
+        Path path;
+        try {
+            // Forge стандарт: <gameDir>/config/local_llm.json (у dev це run/config)
+            path = FMLPaths.CONFIGDIR.get().resolve("local_llm.json");
+        } catch (Throwable t) {
+            // fallback
+            path = Path.of("config", "local_llm.json");
+        }
+
         if (!Files.exists(path)) {
             return cfg;
         }
@@ -217,23 +263,24 @@ public final class LocalLlmClient {
             String json = Files.readString(path, StandardCharsets.UTF_8);
             Config from = GSON.fromJson(json, Config.class);
             if (from != null) {
-                // мерджимо акуратно (щоб null не затирав дефолти)
                 if (from.mode != null) cfg.mode = from.mode;
                 if (from.baseUrl != null && !from.baseUrl.isBlank()) cfg.baseUrl = from.baseUrl;
                 if (from.model != null && !from.model.isBlank()) cfg.model = from.model;
                 if (from.timeoutSec > 0) cfg.timeoutSec = from.timeoutSec;
                 if (from.apiKey != null) cfg.apiKey = from.apiKey;
                 cfg.temperature = from.temperature;
+
+                if (from.maxTokens > 0) cfg.maxTokens = from.maxTokens;
+                if (from.stopMarker != null) cfg.stopMarker = from.stopMarker;
             }
         } catch (Exception ignored) {
-            // На цьому етапі без шуму: якщо конфіг битий — працюємо з дефолтами.
+            // якщо конфіг битий — працюємо з дефолтами
         }
 
         return cfg;
     }
 
     private static void applySystemOverrides(Config cfg) {
-        // system properties override
         String mode = System.getProperty("ai.llm.mode");
         if (mode != null && !mode.isBlank()) {
             try {
@@ -256,7 +303,18 @@ public final class LocalLlmClient {
         }
 
         String apiKey = System.getProperty("ai.llm.apiKey");
-        if (apiKey != null) cfg.apiKey = apiKey; // може бути пустий
+        if (apiKey != null) cfg.apiKey = apiKey;
+
+        String maxTokens = System.getProperty("ai.llm.maxTokens");
+        if (maxTokens != null && !maxTokens.isBlank()) {
+            try {
+                int t = Integer.parseInt(maxTokens.trim());
+                if (t > 0) cfg.maxTokens = t;
+            } catch (Exception ignored) { }
+        }
+
+        String stopMarker = System.getProperty("ai.llm.stopMarker");
+        if (stopMarker != null && !stopMarker.isBlank()) cfg.stopMarker = stopMarker.trim();
     }
 
     private static String normalizeBase(String baseUrl) {
