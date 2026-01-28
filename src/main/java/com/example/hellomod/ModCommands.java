@@ -52,7 +52,7 @@ public class ModCommands {
                                 )
                         )
 
-                        // /ai build_local <thing...>
+                        // /ai build_local <thing...>  (PREVIEW)
                         .then(Commands.literal("build_local")
                                 .then(Commands.argument("thing", StringArgumentType.greedyString())
                                         .executes(ctx -> {
@@ -62,12 +62,38 @@ public class ModCommands {
 
                                             String thing = StringArgumentType.getString(ctx, "thing");
 
-                                            // Стартуємо заглушку пайплайна
-                                            AiBuildLocalService.start(level, player, origin, thing);
+                                            AiBuildLocalService.start(
+                                                    level, player, origin, thing,
+                                                    AiBuildLocalService.ExecMode.PREVIEW
+                                            );
 
-                                            // Лише підтвердження запуску
                                             player.sendMessage(
-                                                    new TextComponent("build_local started..."),
+                                                    new TextComponent("build_local started (preview)..."),
+                                                    player.getUUID()
+                                            );
+
+                                            return 1;
+                                        })
+                                )
+                        )
+
+                        // /ai build_local_exec <thing...>  (EXECUTE)
+                        .then(Commands.literal("build_local_exec")
+                                .then(Commands.argument("thing", StringArgumentType.greedyString())
+                                        .executes(ctx -> {
+                                            ServerPlayer player = ctx.getSource().getPlayerOrException();
+                                            ServerLevel level = ctx.getSource().getLevel();
+                                            BlockPos origin = player.blockPosition();
+
+                                            String thing = StringArgumentType.getString(ctx, "thing");
+
+                                            AiBuildLocalService.start(
+                                                    level, player, origin, thing,
+                                                    AiBuildLocalService.ExecMode.EXECUTE
+                                            );
+
+                                            player.sendMessage(
+                                                    new TextComponent("build_local_exec started (execute)..."),
                                                     player.getUUID()
                                             );
 
