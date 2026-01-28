@@ -52,6 +52,12 @@ public final class AiBuildLocalService {
     private static final int STRICT_MAX_BOX_D = 12;
     // =======================================================
 
+    // ===== PLAN LIMITS (тільки для build_local_exec) =====
+    private static final int STRICT_MAX_DISTANCE = 32;               // blocks
+    private static final long STRICT_MAX_BBOX_VOLUME = 32L * 32 * 32; // 32768
+    private static final long STRICT_MAX_CHANGED_BLOCKS = 8000;
+    // =====================================================
+
     private AiBuildLocalService() {}
 
     public static void start(ServerLevel level, ServerPlayer player, BlockPos origin, String thing, ExecMode mode) {
@@ -273,6 +279,28 @@ public final class AiBuildLocalService {
             if (totalCost > STRICT_MAX_TOTAL_COST) {
                 return "script cost too high (" + totalCost + " > " + STRICT_MAX_TOTAL_COST + ")";
             }
+        }
+
+        // --- Plan estimator checks (bbox / distance / changed blocks) ---
+        DslPlanEstimator.PlanEstimate est = DslPlanEstimator.estimate(lines);
+        if (est.failReason != null) {
+            return "plan estimate failed: " + est.failReason;
+        }
+
+        // Max distance (euclidean)
+        long maxDistSqLimit = (long) STRICT_MAX_DISTANCE * STRICT_MAX_DISTANCE;
+        if (est.maxDistSq > maxDistSqLimit) {
+            return "max distance too large (>" + STRICT_MAX_DISTANCE + " blocks)";
+        }
+
+        // Bounding box volume
+        if (est.bboxVolume > STRICT_MAX_BBOX_VOLUME) {
+            return "bounding box volume too large (" + est.bboxVolume + " > " + STRICT_MAX_BBOX_VOLUME + ")";
+        }
+
+        // Estimated changed blocks
+        if (est.changedBlocks > STRICT_MAX_CHANGED_BLOCKS) {
+            return "too many changed blocks (" + est.changedBlocks + " > " + STRICT_MAX_CHANGED_BLOCKS + ")";
         }
 
         return null;
