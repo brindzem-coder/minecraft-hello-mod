@@ -38,8 +38,16 @@ public final class BuildLocalPromptBuilder {
         sb.append(safeThing.isEmpty() ? "(empty)\n" : safeThing).append("\n\n");
 
         if (!safeWorld.isEmpty()) {
-            sb.append("WORLD_CONTEXT:\n").append(safeWorld).append("\n\n");
+            sb.append("### WORLD_CONTEXT\n");
+            sb.append(safeWorld).append("\n\n");
         }
+
+        sb.append("HARD RULES (STRICT):\n");
+        sb.append("- Do not place blocks in water unless the player explicitly requests building in/over water.\n");
+        sb.append("- Avoid replacing or clearing existing trees unless the player explicitly requests it.\n");
+        sb.append("- Build on solid ground; do not float structures unless the player explicitly requests floating.\n");
+        sb.append("- If the area is obstructed, choose a nearby empty spot within the allowed coordinate limits.\n");
+        sb.append("\n");
 
         sb.append("OUTPUT_FORMAT (STRICT):\n");
         sb.append("BEGIN_DSL\n");

@@ -88,7 +88,8 @@ public final class AiBuildLocalService {
         // ===============================
 
         // Prompt (worldContext поки порожній — пункт 2.6)
-        final String prompt = BuildLocalPromptBuilder.buildPrompt(safeThing, "");
+        final String worldContext = WorldContextProvider.buildContextText(level, origin);
+        final String prompt = BuildLocalPromptBuilder.buildPrompt(safeThing, worldContext);
 
         LOGGER.info("[ai build_local] start mode={} player={} dim={} origin=({}, {}, {}) thing='{}'",
                 safeMode,
